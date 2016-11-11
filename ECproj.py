@@ -1,16 +1,32 @@
 #!/usr/bin/python
 
-#Mitch Schmidt
+#Mitch Schmidt && Brandon Everhart
 #Elliptic Curve Crypto Project
 
+#-----ENCRYPTION-----
+#First, initialize with an EC
+#Second, generate a shared key (using a published public key of the recipient and ephemeral public key)
+#Third, use shared key's x val as a symmetric key and use that to encrypt the message with AES
+#Fourth, xor shared key and symmetric key = sentkey
+#Fifth, compute signature
+#Sixth, send (ephemeral public key, message, and signature)
+
+#-----DECRYPTION-----
+#First, recover shared key = their public key * your private key
+#Decrypt message using shared key.x
+
 #y ** 2 = x ** 3 - 3*x + b mod p
+from __future__ import print_function
 
-import os, gmpy
-from copy import copy as copy
-from fractions import Fraction
+import gmpy, math
+from copy import copy
+from random import SystemRandom
+from Crypto.Cipher import AES#not trying to implement AES, just using is as the symmetric algo after ECDH
+from Crypto import Random
 
-NBITS = 256
+BLOCKBITS = 256
 #constants for nist Curve P-256 "domain constants"
+NBITS = 256
 PRIME = 115792089210356248762697446949407573530086143415290314195533631308867097853951
 ORDER = 115792089210356248762697446949407573529996955224135760342422259061068512044369
 ACOEF = -3
@@ -32,10 +48,16 @@ class EC:
 			raise ValueError("Prime cannot be congruent to 1 mod 8.")
 
 	def genkeys(self):
-		private = int(str(os.urandom(self.nbits)).encode('hex'), 16)
+		#generates random keypair
+		private = SystemRandom().randrange(1,self.order)
+		self.basep = ECpoint(self.xbase, self.ybase, self) 
 		
-		public = ""
-		return private, public		
+		public = self.basep * private
+		return private, public
+
+	def gensharedsecret(self, mysecret, yourpublic):
+		#returns x value of shared secret, which is what we will use to encrypt
+		return (yourpublic * mysecret).x
 
 class ECpoint:
 	ec = EC()
@@ -49,7 +71,8 @@ class ECpoint:
 		assert not type(x) == type(int)
 		assert not type(y) == type(int)
 		
-	def isvalid(self):
+	def isvalid(self):#helper function
+		#returns true if point is on ec, false if not
 		if self.x == self.y == 0:#true if pai
 			return True
 
@@ -58,6 +81,8 @@ class ECpoint:
 		return not (res % 23)
 
 	def getPointFromX(self, x):
+		#returns two points that x generates
+		
 		#plug into equation
 		ysq = x ** 3 - a * x + self.ec.bcoef
 
@@ -78,6 +103,7 @@ class ECpoint:
 		return (ECpoint(x,res), ECpoint(x,-1*res%self.ec.prime))
 
 	def __add__(self, q):
+		#add two points on an EC
 		assert type(q) == type(ECpoint())
 		
 		if not self.x == self.y == 0 and not q.x == q.y == 0:
@@ -108,6 +134,7 @@ class ECpoint:
 			return copy(self)
 
 	def __str__(self):
+		#this is used to print (ECpoint)
 		return ("(" + str(self.x) + ", " + str(self.y) + ")")
 
 	def __mul__(self, scalar):
@@ -127,10 +154,11 @@ class ECpoint:
 			return copy(self)
 	
 		temp = copy(self)
-
+		
 		return reduce(lambda x, y: y + x, [r*int(i, 2) for (i, r) in zip(str(bin(scalar))[:1:-1], self.multgen())])
 
 	def multgen(self):
+		#generator to help with multiplication
 		temp = copy(self)
 		yield temp
 		
@@ -139,23 +167,63 @@ class ECpoint:
 			yield temp
 
 	def __neg__(self):
+		#unary negative operator(used for addition)
 		res = copy(self)
 		res.y = -self.y % self.ec.prime
 
 		return res
 
-print ("E : y ** 2 = x ** 3 + a * x + b (mod p)")
+def Pad(message):
+	#filler padding for later
+	return message
 
-ec = EC(5, 23, None, 1, 0, 9, 5)
-ecp = ECpoint(9, 5, ec)
-pai = ECpoint(0, 0)
+def encrypt(m):
+	#encrypt message by computing key, generating random iv, then calling AES cipher
+	key = bin(ec.gensharedsecret(salice, pbob))[2:]
 
-print '-----'
-#sanity checks
-a = (ecp + ecp + ecp + ecp + ecp)
-print a, a.isvalid()
-print '---'
-b = (ecp * 5)
-print b, b.isvalid()
+	while len(key) != BLOCKBITS:
+		key = key[:2] + '0' + key[2:]
 
-print ("Randomly generated keys:" + str(ec.genkeys()))
+	key = "".join([chr(int(key[i*8:i*8+8],2)) for i in range(int(BLOCKBITS / 8))])
+
+	iv = Random.new().read(AES.block_size)
+	cipher = AES.new(key, AES.MODE_CFB, iv)
+
+	padded = Pad(m)
+	msg = iv + cipher.encrypt(padded)
+
+	print("Encypted message:", msg)
+	return (msg)
+
+def decrypt(c):
+	#decrypt message by computing key, generating random iv, then calling AES cipher	
+	key = bin(ec.gensharedsecret(sbob, palice))[2:]
+
+	while len(key) != BLOCKBITS:
+		key = key[:2] + '0' + key[2:]
+
+	key = "".join([chr(int(key[i*8:i*8+8],2)) for i in range(int(BLOCKBITS / 8))])
+
+	iv = c[:AES.block_size]
+	cipher = AES.new(key, AES.MODE_CFB, iv)
+	return cipher.decrypt(c[AES.block_size:])
+	
+if __name__ == "__main__":
+	print ("E : y ** 2 = x ** 3 + a * x + b (mod p)")
+	ec = EC()
+
+	#example to show how this stuff works
+	salice, palice = ec.genkeys()
+	sbob, pbob = ec.genkeys()
+
+	print ("Randomly generated public key for alice:" + str(palice))
+	print ("Randomly generated public key for bob:" + str(pbob))
+	print ("Randomly generated private key for alice:" + str(salice))
+	print ("Randomly generated private key for bob:" + str(sbob))
+
+	print ("Shared secret:", ec.gensharedsecret(salice, pbob))
+
+	message = "Attack at dawn"
+
+	#example encrypting/decrypting message
+	print ("Decrypted message:", decrypt(encrypt(message)))
