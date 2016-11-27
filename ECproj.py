@@ -16,13 +16,20 @@
 #Decrypt message using shared key.x
 
 #y ** 2 = x ** 3 - 3*x + b mod p
-from __future__ import print_function
+#from __future__ import print_function
 
-import gmpy, math
+import gmpy2, math
 from copy import copy
 from random import SystemRandom
 from Crypto.Cipher import AES#not trying to implement AES, just using is as the symmetric algo after ECDH
 from Crypto import Random
+from functools import reduce
+from binascii import *
+from hashlib import sha256
+import OAEP
+
+DEMO = False
+
 
 BLOCKBITS = 256
 #constants for nist Curve P-256 "domain constants"
@@ -34,6 +41,18 @@ BCOEF = int("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b", 
 XBASE = int("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", 16)
 YBASE = int("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", 16)
 
+#constants for secp256k1 "domain constants"
+NBITS = 256
+PRIME = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+ACOEF = 0
+BCOEF = 7
+XBASE = 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+YBASE = 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+
+#not sure if we actually need this but w/e
+CHARLENGTH = 8
+ 
 class EC:
 	def __init__(self, nbits=NBITS, prime=PRIME, order=ORDER, acoef=ACOEF, bcoef=BCOEF, xbase=XBASE, ybase=YBASE):
 		self.nbits = nbits
@@ -109,23 +128,25 @@ class ECpoint:
 		if not self.x == self.y == 0 and not q.x == q.y == 0:
 			if self.x == q.x and self.y == q.y:
 				#double
-				slope = (3 * self.x ** 2 + self.ec.acoef) * gmpy.invert(2 * self.y, self.ec.prime) % self.ec.prime
+				slope = (3 * self.x ** 2 + self.ec.acoef) * gmpy2.invert(2 * self.y, self.ec.prime) % self.ec.prime
 
-			elif self.y == -1*q.y:
+			elif self.x == q.x and self.y != q.y:
 				#negate
 				res = copy.copy(self)
+				res.x = 0
+				res.y = 0
 				return res
 
 			else:
 				#regular add
-				slope = (self.y-q.y) * gmpy.invert(self.x-q.x, self.ec.prime) % self.ec.prime
+				slope = (self.y-q.y) * gmpy2.invert(self.x-q.x, self.ec.prime) % self.ec.prime
 
 			x = (slope ** 2 - self.x - q.x) % self.ec.prime
-			y = (-slope * x + slope * self.x - self.y) % self.ec.prime
+			y = -(slope * (x - self.x) + self.y) % self.ec.prime
 			
 			resEC = copy(self)
-			resEC.x, resEC.y = x, y
-			return -resEC
+			resEC.x, resEC.y = x, (y)
+			return resEC
 
 		elif self.x == 0:#if self is pai
 			return q
@@ -177,37 +198,149 @@ def Pad(message):
 	#filler padding for later
 	return message
 
-def encrypt(m):
+def encrypt(msg):
 	#encrypt message by computing key, generating random iv, then calling AES cipher
 	key = bin(ec.gensharedsecret(salice, pbob))[2:]
+	if DEMO:
+		print (key, type(key))
 
-	while len(key) != BLOCKBITS:
+	while len(key) % BLOCKBITS:
 		key = key[:2] + '0' + key[2:]
 
-	key = "".join([chr(int(key[i*8:i*8+8],2)) for i in range(int(BLOCKBITS / 8))])
-
+	key = "".join([chr(int(key[i*CHARLENGTH:i*CHARLENGTH+CHARLENGTH],2)) for i in range(int(BLOCKBITS / CHARLENGTH))])
+	key = str(key).encode('utf8')
+	
+	key = sha256(key).digest()
+	
 	iv = Random.new().read(AES.block_size)
 	cipher = AES.new(key, AES.MODE_CFB, iv)
 
-	padded = Pad(m)
+	#magic
+	padded =OAEP.pad(msg)
+	if DEMO:
+		print ("padded string: ", padded, type(padded))
 	msg = iv + cipher.encrypt(padded)
 
-	print("Encypted message:", msg)
+	if DEMO:
+		print("Encypted message:", msg)
 	return (msg)
 
 def decrypt(c):
 	#decrypt message by computing key, generating random iv, then calling AES cipher	
 	key = bin(ec.gensharedsecret(sbob, palice))[2:]
 
-	while len(key) != BLOCKBITS:
+	while len(key) % BLOCKBITS:
 		key = key[:2] + '0' + key[2:]
 
-	key = "".join([chr(int(key[i*8:i*8+8],2)) for i in range(int(BLOCKBITS / 8))])
-
+	key = "".join([chr(int(key[i*CHARLENGTH:i*CHARLENGTH+CHARLENGTH],2)) for i in range(int(BLOCKBITS / CHARLENGTH))])
+	key = key.encode('utf8')
+	
+	key = sha256(key).digest()
+	
 	iv = c[:AES.block_size]
 	cipher = AES.new(key, AES.MODE_CFB, iv)
-	return cipher.decrypt(c[AES.block_size:])
+	val = str(cipher.decrypt(c[AES.block_size:]))[2:-1]
 	
+	if DEMO:
+		print ("val: ", val)
+	val = OAEP.unpad(val)
+	
+	return val
+
+def truncatehash(msg, order):
+	#helper function returns the int value of message truncated to length of the order
+	n = order
+	
+	#length of order
+	bitlength = len(str(bin(n)))-2#length of order
+	msghash =  sha256(msg).digest()#hash message
+
+	if DEMO:
+		print ("Bitlength =", bitlength)
+		print ("msghash =", msghash)
+
+	return int(str(bin(int.from_bytes(msghash, 'little')))[2:bitlength+2], 2)#take message, convert to int, then binary, then string and truncate and return
+
+def sign(msg, curve, secret):
+	"""
+	1. Take a random int k < n - 1
+	2. calculate P = kG (base point)
+	3. calculate r = x % n
+	4. calculate s = k^-1(z+rd) % n , if s or r = 0start over
+	5. (r, s) is the signature
+	"""
+
+	#1
+	n = int(curve.order)
+	k = SystemRandom().randrange(1,n)
+	if DEMO:
+		print ("Random int:", k)
+	
+	#2
+	basepoint = ECpoint(curve.xbase, curve.ybase)
+	P = basepoint * k
+	if DEMO:
+		print ("Base point x:", basepoint.x)
+		print ("Generated point:", P)
+	 
+	#3
+	r  = int(P.x) % n
+	if DEMO:
+		print ("r =", r)
+	
+	#4
+	kinverse = int(gmpy2.invert(k, n))
+	z = truncatehash(msg, n)
+	
+	if DEMO:
+		print ("n =", n)
+		print ("truncated hash =", z)
+	
+	s = (kinverse * (z + r * secret)) % n
+	sinverse = int(gmpy2.invert(s, n))
+	if DEMO:
+		print ("s =", s)
+		print ("sinv =", sinverse)
+		print ("left:", (sinverse*z)%n)
+		print ("right:", (sinverse*r*secret)%n)
+		
+	if r * s == 0:
+		return sign(msg, curve, secret)
+		
+	return (r, s)
+
+def verify(msg, curve, public, sig):
+	"""
+	1. Calculate u = s^-1 z mode n
+	2. Calculate v = s^-1 r mode n
+	3. Calculate P = uG + vH (G = basepoint, H = public key)
+	"""
+	n = int(curve.order)
+	sinverse = int(gmpy2.invert(sig[1], n))
+	
+	#1
+	z = truncatehash(msg, n)
+	u = (sinverse * z) % n
+	
+	#2
+	r = sig[0]
+	v = (sinverse * r) % n
+	
+	basepoint = ECpoint(curve.xbase, curve.ybase)
+	if DEMO:
+		print ("Base point:", basepoint)
+		print ("sinv:", sinverse)
+		print ("u:", u)
+		print ("v:", v)
+
+	P = basepoint * u + public * v
+
+	if DEMO:
+		print ("\nP.x:", P.x)
+		print ("r:", sig[0])
+
+	return (P.x == sig[0])
+
 if __name__ == "__main__":
 	print ("E : y ** 2 = x ** 3 + a * x + b (mod p)")
 	ec = EC()
@@ -221,9 +354,20 @@ if __name__ == "__main__":
 	print ("Randomly generated private key for alice:" + str(salice))
 	print ("Randomly generated private key for bob:" + str(sbob))
 
-	print ("Shared secret:", ec.gensharedsecret(salice, pbob))
+	print ("Shared secret1:", ec.gensharedsecret(salice, pbob))
+	print ("Shared secret2:", ec.gensharedsecret(sbob, palice))
 
 	message = "Attack at dawn"
 
+	print ("padded message: ", OAEP.pad(message))
+	
 	#example encrypting/decrypting message
-	print ("Decrypted message:", decrypt(encrypt(message)))
+	encrypted = encrypt(message)
+	output = decrypt(encrypted)
+	print ("Decrypted message:", output)
+
+	signature = sign(encrypted, ec, salice)
+	print ("Signature of the message is: ", signature)
+	
+	verified = verify(encrypted, ec, palice, signature)
+	print (verified)
