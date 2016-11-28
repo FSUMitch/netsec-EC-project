@@ -28,7 +28,13 @@ from binascii import *
 from hashlib import sha256
 import OAEP
 
+
+
 DEMO = False
+
+
+
+
 
 
 BLOCKBITS = 256
@@ -90,6 +96,8 @@ class ECpoint:
 		assert not type(x) == type(int)
 		assert not type(y) == type(int)
 		
+
+
 	def isvalid(self):#helper function
 		#returns true if point is on ec, false if not
 		if self.x == self.y == 0:#true if pai
@@ -198,9 +206,12 @@ def Pad(message):
 	#filler padding for later
 	return message
 
-def encrypt(msg):
+def encrypt(msg, key):
 	#encrypt message by computing key, generating random iv, then calling AES cipher
-	key = bin(ec.gensharedsecret(salice, pbob))[2:]
+	
+	#key = bin(ec.gensharedsecret(salice, pbob))[2:]
+	key = bin(key)[2:]
+	
 	if DEMO:
 		print (key, type(key))
 
@@ -225,9 +236,11 @@ def encrypt(msg):
 		print("Encypted message:", msg)
 	return (msg)
 
-def decrypt(c):
+def decrypt(c, key):
 	#decrypt message by computing key, generating random iv, then calling AES cipher	
-	key = bin(ec.gensharedsecret(sbob, palice))[2:]
+	
+	#key = bin(ec.gensharedsecret(sbob, palice))[2:]
+	key = bin(key)[2:]
 
 	while len(key) % BLOCKBITS:
 		key = key[:2] + '0' + key[2:]
@@ -341,7 +354,10 @@ def verify(msg, curve, public, sig):
 
 	return (P.x == sig[0])
 
-if __name__ == "__main__":
+
+
+#if __name__ == "__main__":
+'''
 	print ("E : y ** 2 = x ** 3 + a * x + b (mod p)")
 	ec = EC()
 
@@ -360,14 +376,18 @@ if __name__ == "__main__":
 	message = "Attack at dawn"
 
 	print ("padded message: ", OAEP.pad(message))
-	
+
 	#example encrypting/decrypting message
 	encrypted = encrypt(message)
+	print(encrypted)
+	print(type(encrypted))
 	output = decrypt(encrypted)
 	print ("Decrypted message:", output)
 
 	signature = sign(encrypted, ec, salice)
 	print ("Signature of the message is: ", signature)
-	
+
 	verified = verify(encrypted, ec, palice, signature)
-	print (verified)
+
+print (verified)
+'''
