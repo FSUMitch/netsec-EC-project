@@ -9,7 +9,43 @@ import sys
 import argparse 
 import ECproj
 
-ec = ECproj.EC()
+#ec = ECproj.EC()
+
+#constants for P-192 curve
+NBITS192 = 192		
+PRIME192 = 6277101735386680763835789423207666416083908700390324961279
+ORDER192 = 6277101735386680763835789423176059013767194773182842284081
+ACOEF192 = -3
+BCOEF192 = 0x64210519e59c80e70fa7e9ab72243049feb8deecc146b9b1
+XBASE192 = 0x188da80eb03090f67cbf20eb43a18800f4ff0afd82ff1012
+YBASE192 = 0x07192b95ffc8da78631011ed6b24cdd573f977a11e794811
+
+#constants for P-256 curve
+NBITS256 = 256
+PRIME256 = 115792089210356248762697446949407573530086143415290314195533631308867097853951
+ORDER256 = 115792089210356248762697446949407573529996955224135760342422259061068512044369
+ACOEF256 = -3
+BCOEF256 = int("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b", 16)
+XBASE256 = int("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", 16)
+YBASE256 = int("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", 16)
+
+#constants for P-384 curve
+NBITS384 = 384
+PRIME384 = 39402006196394479212279040100143613805079739270465446667948293404245721771496870329047266088258938001861606973112319
+ORDER384 = 39402006196394479212279040100143613805079739270465446667946905279627659399113263569398956308152294913554433653942643
+ACOEF384 = -3
+BCOEF384 = 0xb3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef
+XBASE384 = 0xaa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7
+YBASE384 = 0x3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f
+
+#constants for P-521 curve
+NBITS521 = 521
+PRIME521 = 6864797660130609714981900799081393217269435300143305409394463459185543183397656052122559640661454554977296311391480858037121987999716643812574028291115057151
+ORDER521 = 6864797660130609714981900799081393217269435300143305409394463459185543183397655394245057746333217197532963996371363321113864768612440380340372808892707005449
+ACOEF521 = -3
+BCOEF521 = 0x051953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f00
+XBASE521 = 0xc6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66
+YBASE521 = 0x11839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650
 
 parser = argparse.ArgumentParser()
 
@@ -39,19 +75,38 @@ parser.add_argument("-s", "--sign")
 #verify a msg signature
 parser.add_argument("-v","--verify")
 
-#specify message when verifying signature
-parser.add_argument("-m", "--message")
+#specify ciphertext when verifying signature
+parser.add_argument("-c", "--cipherText")
+
+#specify an elliptic curve to be used
+parser.add_argument("-ec", "--ellipticCurve", choices=['P-192','P-256','P-384','P-521','secp256k1'])
 
 #parse command line arguments
 args = parser.parse_args()
 
 
-#generating a public and private key for a user: -gk -o [outputfile]
+#generating a public and private key for a user: -gk (-ec [ellipticCurve])-o [outputfile]
 if args.generateKeys:
 
 	if args.outputFile is None:
 		print("Error: must provide output file with the \"-o\" flag when generating keys." )
 		sys.exit()
+
+	if (args.ellipticCurve is None) or (args.ellipticCurve == 'secp256k1'):
+		ec = ECproj.EC()
+
+	if args.ellipticCurve == 'P-192':
+		ec = ECproj.EC(NBITS192,PRIME192,ORDER192,ACOEF192,BCOEF192,XBASE192,YBASE192)
+
+	if args.ellipticCurve == 'P-256':
+		ec = ECproj.EC(NBITS256,PRIME256,ORDER256,ACOEF256,BCOEF256,XBASE256,YBASE256)
+	
+	if args.ellipticCurve == 'P-384':
+		ec = ECproj.EC(NBITS384,PRIME384,ORDER384,ACOEF384,BCOEF384,XBASE384,YBASE384)
+
+	if args.ellipticCurve == 'P-521':
+		ec = ECproj.EC(NBITS521,PRIME521,ORDER521,ACOEF521,BCOEF521,XBASE521,YBASE521)
+
 
 	file = open(args.outputFile,'w')
 	secret, public = ec.genkeys()
@@ -59,7 +114,7 @@ if args.generateKeys:
 	file.write(str(public))
 
 
-#generate shared secret: -gs -sk [secretkey] -pk [publickey] -o [outputfile]	
+#generate shared secret: -gs -sk [secretkey] -pk [publickey] (-ec [ellipticCurve]) -o [outputfile]	
 if args.generateSecret:
 
 	if (args.secretkey is None) or (args.publickey is None):
@@ -70,6 +125,21 @@ if args.generateSecret:
 		print("Error: must provide output file with the \"-o\" flag when creating shared secret." )
 		sys.exit()
 	
+	if (args.ellipticCurve is None) or (args.ellipticCurve == 'secp256k1'):
+		ec = ECproj.EC()
+
+	if args.ellipticCurve == 'P-192':
+		ec = ECproj.EC(NBITS192,PRIME192,ORDER192,ACOEF192,BCOEF192,XBASE192,YBASE192)
+
+	if args.ellipticCurve == 'P-256':
+		ec = ECproj.EC(NBITS256,PRIME256,ORDER256,ACOEF256,BCOEF256,XBASE256,YBASE256)
+	
+	if args.ellipticCurve == 'P-384':
+		ec = ECproj.EC(NBITS384,PRIME384,ORDER384,ACOEF384,BCOEF384,XBASE384,YBASE384)
+
+	if args.ellipticCurve == 'P-521':
+		ec = ECproj.EC(NBITS521,PRIME521,ORDER521,ACOEF521,BCOEF521,XBASE521,YBASE521)
+
 	#secret key is on first line of file
 	secret = int(open(args.secretkey, 'r').readline())
 	
@@ -123,7 +193,7 @@ if args.decryptMsg is not None:
 		open(args.outputFile,'w').write(str(result))
 	
 
-#sign a message: -s [message] -sk [secretkey]
+#sign a message: -s [ciphertext] -sk [secretkey] (-ec [ellipticCurve])
 if args.sign is not None:
 
 	if args.secretkey is None:
@@ -134,21 +204,51 @@ if args.sign is not None:
 		print("Error: must provide output file with the \"-o\" flag when signing a message." )
 		sys.exit()
 
-	message = open(args.sign, 'r').read()
-	byteMsg = int(message,2).to_bytes((len(message)+7) // 8, byteorder='big')
+	if (args.ellipticCurve is None) or (args.ellipticCurve == 'secp256k1'):
+		ec = ECproj.EC()
+
+	if args.ellipticCurve == 'P-192':
+		ec = ECproj.EC(NBITS192,PRIME192,ORDER192,ACOEF192,BCOEF192,XBASE192,YBASE192)
+
+	if args.ellipticCurve == 'P-256':
+		ec = ECproj.EC(NBITS256,PRIME256,ORDER256,ACOEF256,BCOEF256,XBASE256,YBASE256)
+	
+	if args.ellipticCurve == 'P-384':
+		ec = ECproj.EC(NBITS384,PRIME384,ORDER384,ACOEF384,BCOEF384,XBASE384,YBASE384)
+
+	if args.ellipticCurve == 'P-521':
+		ec = ECproj.EC(NBITS521,PRIME521,ORDER521,ACOEF521,BCOEF521,XBASE521,YBASE521)
+
+	cipherText = open(args.sign, 'r').read()
+	byteCT = int(cipherText,2).to_bytes((len(cipherText)+7) // 8, byteorder='big')
 	key = int(open(args.secretkey, 'r').readline())
-	open(args.outputFile,'w').write(str(ECproj.sign(byteMsg, ec, key)))
+	open(args.outputFile,'w').write(str(ECproj.sign(byteCT, ec, key)))
 
 
-#verify a signature: -v [signature] -pk [publickey] -m [message]
+#verify a signature: -v [signature] -pk [publickey] -c [cipherText] (-ec [ellipticCurve])
 if args.verify is not None:
 	
 	if args.publickey is None:
 		print("Error: must provide public key when verifying a signature.")
 		sys.exit()
 
-	message = open(args.message, 'r').read()
-	byteMsg = int(message,2).to_bytes((len(message)+7) // 8, byteorder='big')
+	if (args.ellipticCurve is None) or (args.ellipticCurve == 'secp256k1'):
+		ec = ECproj.EC()
+
+	if args.ellipticCurve == 'P-192':
+		ec = ECproj.EC(NBITS192,PRIME192,ORDER192,ACOEF192,BCOEF192,XBASE192,YBASE192)
+
+	if args.ellipticCurve == 'P-256':
+		ec = ECproj.EC(NBITS256,PRIME256,ORDER256,ACOEF256,BCOEF256,XBASE256,YBASE256)
+	
+	if args.ellipticCurve == 'P-384':
+		ec = ECproj.EC(NBITS384,PRIME384,ORDER384,ACOEF384,BCOEF384,XBASE384,YBASE384)
+
+	if args.ellipticCurve == 'P-521':
+		ec = ECproj.EC(NBITS521,PRIME521,ORDER521,ACOEF521,BCOEF521,XBASE521,YBASE521)
+
+	cipherText = open(args.cipherText, 'r').read()
+	byteCT = int(cipherText,2).to_bytes((len(cipherText)+7) // 8, byteorder='big')
 	
 	temp = open(args.verify, 'r').read()
 	tupAB = temp.partition(",")
@@ -164,4 +264,4 @@ if args.verify is not None:
 	y = int(tupXY[2][:-1])
 	point = ECproj.ECpoint(x,y,ec)
 
-	print(ECproj.verify(byteMsg, ec, point, signature))
+	print(ECproj.verify(byteCT, ec, point, signature))
