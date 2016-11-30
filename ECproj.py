@@ -19,7 +19,8 @@
 #from __future__ import print_function
 
 import gmpy2, math
-from copy import copy
+#from copy import copy
+from copy import deepcopy as copy
 from random import SystemRandom
 from Crypto.Cipher import AES#not trying to implement AES, just using is as the symmetric algo after ECDH
 from Crypto import Random
@@ -29,16 +30,11 @@ from hashlib import sha256
 import OAEP
 
 
-
 DEMO = False
-
-
-
-
-
 
 BLOCKBITS = 256
 #constants for nist Curve P-256 "domain constants"
+
 NBITS = 256
 PRIME = 115792089210356248762697446949407573530086143415290314195533631308867097853951
 ORDER = 115792089210356248762697446949407573529996955224135760342422259061068512044369
@@ -46,6 +42,7 @@ ACOEF = -3
 BCOEF = int("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b", 16)
 XBASE = int("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296", 16)
 YBASE = int("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5", 16)
+
 
 #constants for secp256k1 "domain constants"
 NBITS = 256
@@ -87,6 +84,8 @@ class EC:
 class ECpoint:
 	ec = EC()
 
+	i = 0
+
 	#we call the point at infinity (0,0) because this invalid point in an EC
 	def __init__(self, x=0, y=0, ec=EC()):
 		self.x = x
@@ -95,9 +94,7 @@ class ECpoint:
 
 		assert not type(x) == type(int)
 		assert not type(y) == type(int)
-		
-
-
+	
 	def isvalid(self):#helper function
 		#returns true if point is on ec, false if not
 		if self.x == self.y == 0:#true if pai
@@ -127,7 +124,7 @@ class ECpoint:
 			res = "not implemented"
 			raise ValueError("not implemented")
 			
-		return (ECpoint(x,res), ECpoint(x,-1*res%self.ec.prime))
+		return (ECpoint(x,res,self.ec), ECpoint(x,-1*res%self.ec.prime,self.ec))
 
 	def __add__(self, q):
 		#add two points on an EC
@@ -152,9 +149,12 @@ class ECpoint:
 			x = (slope ** 2 - self.x - q.x) % self.ec.prime
 			y = -(slope * (x - self.x) + self.y) % self.ec.prime
 			
-			resEC = copy(self)
-			resEC.x, resEC.y = x, (y)
-			return resEC
+			#resEC = copy(self)
+			#resEC.x, resEC.y = x, (y)
+			#resEC.x, resEC.y, resEC.ec = x, y, self.ec
+			#return resEC
+			return ECpoint(x,y,self.ec)
+
 
 		elif self.x == 0:#if self is pai
 			return q
@@ -290,7 +290,7 @@ def sign(msg, curve, secret):
 		print ("Random int:", k)
 	
 	#2
-	basepoint = ECpoint(curve.xbase, curve.ybase)
+	basepoint = ECpoint(curve.xbase, curve.ybase, curve)
 	P = basepoint * k
 	if DEMO:
 		print ("Base point x:", basepoint.x)
@@ -339,7 +339,7 @@ def verify(msg, curve, public, sig):
 	r = sig[0]
 	v = (sinverse * r) % n
 	
-	basepoint = ECpoint(curve.xbase, curve.ybase)
+	basepoint = ECpoint(curve.xbase, curve.ybase, curve)
 	if DEMO:
 		print ("Base point:", basepoint)
 		print ("sinv:", sinverse)
@@ -354,10 +354,8 @@ def verify(msg, curve, public, sig):
 
 	return (P.x == sig[0])
 
+if __name__ == "__main__":
 
-
-#if __name__ == "__main__":
-'''
 	print ("E : y ** 2 = x ** 3 + a * x + b (mod p)")
 	ec = EC()
 
@@ -378,10 +376,10 @@ def verify(msg, curve, public, sig):
 	print ("padded message: ", OAEP.pad(message))
 
 	#example encrypting/decrypting message
-	encrypted = encrypt(message)
+	encrypted = encrypt(message, ec.gensharedsecret(sbob,palice))
 	print(encrypted)
 	print(type(encrypted))
-	output = decrypt(encrypted)
+	output = decrypt(encrypted, ec.gensharedsecret(sbob,palice))
 	print ("Decrypted message:", output)
 
 	signature = sign(encrypted, ec, salice)
@@ -389,5 +387,4 @@ def verify(msg, curve, public, sig):
 
 	verified = verify(encrypted, ec, palice, signature)
 
-print (verified)
-'''
+	print (verified)

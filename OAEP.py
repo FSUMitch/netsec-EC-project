@@ -118,11 +118,13 @@ def unpad(msg):
 
 if __name__ == "__main__":
 	
-	msg =  "This program currently works for msgs of any length. It pads the last block of the msg to make the to make the final msg have a length of which is a multiple of 256 bits."
+	msg =  "This program currently works for msgs of any length. It pads the last block of the msg to make the padded msg have a length equal to a multiple of 256 bits."
 	print ("ORIGINAL MSG:\n", msg, "\n" )
+	print ("ORIGINAL BINARY:\n", CharsToBinary(msg, errors), "\n")
+
 
 	output = pad(msg)
-	print ( "PADDED MSG:\n", output)
+	print ( "PADDED BINARY:\n", output)
 
 	result = unpad(output)
 	print ("\nUNPADDED MSG:\n",result)
